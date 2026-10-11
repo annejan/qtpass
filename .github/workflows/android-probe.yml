@@ -1,0 +1,58 @@
+# Throwaway probe: does QtPass build for Android at all, and what does the
+# APK do when it starts? Not for IJHack/QtPass.
+name: Android probe
+on:
+  push:
+    branches: [android-probe]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    env:
+      QT_VERSION: "6.8.3"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: NDK the Qt version expects
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;26.1.10909125" "platforms;android-35" "build-tools;35.0.0" >/dev/null
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/26.1.10909125" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+      - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4.4.1
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: android
+          arch: android_arm64_v8a
+          autodesktop: true
+          cache: true
+      - name: Build src and main
+        run: |
+          set -x
+          mkdir build && cd build
+          "$QT_ROOT_DIR/bin/qmake" ../qtpass.pro CONFIG+=release ANDROID_ABIS=arm64-v8a
+          make -j"$(nproc)" sub-src sub-main 2>&1 | tail -60
+          find . -name '*.so' -o -name '*.a' -o -name '*deployment-settings.json' | head
+      - name: Package the APK
+        run: |
+          set -x
+          cd build
+          mkdir -p android-build/libs/arm64-v8a
+          cp main/libqtpass_arm64-v8a.so android-build/libs/arm64-v8a/
+          "$QT_ROOT_DIR/../gcc_64/bin/androiddeployqt" \
+            --input main/android-qtpass-deployment-settings.json \
+            --output android-build --android-platform android-35 \
+            --jdk "$JAVA_HOME" --gradle 2>&1 | tail -40
+          find android-build -name '*.apk' -exec ls -l {} +
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: qtpass-android-probe
+          path: |
+            build/android-build/build/outputs/apk/**/*.apk
+            build/main/android-qtpass-deployment-settings.json
+          if-no-files-found: warn
