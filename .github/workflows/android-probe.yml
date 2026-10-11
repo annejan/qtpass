@@ -79,7 +79,10 @@ jobs:
           arch: arm64-v8a
           target: google_apis
           disable-animations: true
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-boot-timeout: 1200
+          # No forced software GPU: let the emulator use the host's
+          # hardware acceleration, which is the point of an arm64 runner.
+          emulator-options: -no-snapshot-save -no-window -noaudio -no-boot-anim -camera-back none
           script: |
             set -x
             apk=$(find artifact -name '*.apk' | head -1)
