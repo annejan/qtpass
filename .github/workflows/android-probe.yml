@@ -35,7 +35,11 @@ jobs:
           set -x
           mkdir build && cd build
           "$QT_ROOT_DIR/bin/qmake" ../qtpass.pro CONFIG+=release ANDROID_ABIS=arm64-v8a
-          make -j"$(nproc)" sub-src sub-main 2>&1 | tail -60
+          make -j"$(nproc)" sub-src 2>&1 | tail -20
+          # Android's qmake suffixes the ABI to the static library too;
+          # main.pro links libqtpass.a.
+          cp src/libqtpass_arm64-v8a.a src/libqtpass.a
+          make -j"$(nproc)" sub-main 2>&1 | tail -40
           find . -name '*.so' -o -name '*.a' -o -name '*deployment-settings.json' | head
       - name: Package the APK
         run: |
