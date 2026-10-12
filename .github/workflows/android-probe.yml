@@ -136,11 +136,16 @@ jobs:
           adb install -r "$apk"
           adb logcat -c
           adb shell am start -n "$pkg/$activity"
-          sleep 15
-          adb shell "pidof $pkg || ps -A | grep $pkg" && echo "ALIVE after 15s" || echo "NOT RUNNING after 15s (crashed or exited)"
+          sleep 20
+          adb shell "pidof $pkg || ps -A | grep $pkg" && echo "ALIVE after 20s" || echo "NOT RUNNING after 20s (crashed or exited)"
+          adb exec-out screencap -p > screen.png
+          adb shell dumpsys window windows | grep -i "mCurrentFocus\|mFocusedApp" > focus.txt
+          cat focus.txt
           adb logcat -d > logcat.txt
-          echo "---- lines mentioning the app or a crash ----"
-          grep -i "$pkg\|fatal\|androidruntime" logcat.txt | tail -200
+          echo "---- full logcat tag summary ----"
+          cut -d' ' -f6 logcat.txt | sed 's/:$//' | sort | uniq -c | sort -rn | head -40
+          echo "---- app package, Qt, qtpass category, warnings and errors ----"
+          grep -iE "$pkg|fatal|androidruntime|qtpass| Qt |qt_|libqtpass|gpg|git| W | E " logcat.txt | tail -300
           SCRIPT
           chmod +x probe.sh
       - name: Boot a KVM-accelerated emulator and launch the APK
@@ -158,5 +163,8 @@ jobs:
         if: always()
         with:
           name: qtpass-android-probe-logcat
-          path: logcat.txt
+          path: |
+            logcat.txt
+            screen.png
+            focus.txt
           if-no-files-found: warn
