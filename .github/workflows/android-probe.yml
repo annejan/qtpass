@@ -28,13 +28,12 @@ jobs:
           host: all_os
           target: android
           arch: android_arm64_v8a
-          autodesktop: true
           cache: true
       - name: Build src and main
         run: |
           set -x
           mkdir build && cd build
-          "$QT_ROOT_DIR/bin/qmake" ../qtpass.pro CONFIG+=release ANDROID_ABIS=arm64-v8a
+          "$QT_ROOT_DIR/bin/qmake" ../qtpass.pro CONFIG+=release CONFIG+=nosingleapp ANDROID_ABIS=arm64-v8a
           make -j"$(nproc)" sub-src 2>&1 | tail -20
           # Android's qmake suffixes the ABI to the static library too;
           # main.pro links libqtpass.a.
@@ -87,13 +86,12 @@ jobs:
           host: all_os
           target: android
           arch: android_x86_64
-          autodesktop: true
           cache: true
       - name: Build src and main
         run: |
           set -x
           mkdir build && cd build
-          "$QT_ROOT_DIR/bin/qmake" ../qtpass.pro CONFIG+=release ANDROID_ABIS=x86_64
+          "$QT_ROOT_DIR/bin/qmake" ../qtpass.pro CONFIG+=release CONFIG+=nosingleapp ANDROID_ABIS=x86_64
           make -j"$(nproc)" sub-src 2>&1 | tail -20
           cp src/libqtpass_x86_64.a src/libqtpass.a
           make -j"$(nproc)" sub-main 2>&1 | tail -40
