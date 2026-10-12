@@ -126,6 +126,16 @@ jobs:
         with:
           name: qtpass-android-probe-x86_64
           path: artifact
+      # /dev/kvm exists on the hosted runners but only root may open it;
+      # without this the emulator falls back to software emulation, and the
+      # earlier runs showed exactly that: System UI ANR, 1441 skipped frames.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm
       - name: Write the launch-check script
         run: |
           cat > probe.sh <<'SCRIPT'
@@ -133,19 +143,31 @@ jobs:
           apk=$(find artifact -name '*.apk' | head -1)
           pkg=org.qtproject.example.qtpass
           activity=org.qtproject.qt.android.bindings.QtActivity
+          mkdir -p shots
+          # An ANR dialog from the system must not cover the app.
+          adb shell settings put global hide_error_dialogs 1
+          adb shell wm size
+          adb shell wm density
           adb install -r "$apk"
           adb logcat -c
-          adb shell am start -n "$pkg/$activity"
-          sleep 20
-          adb shell "pidof $pkg || ps -A | grep $pkg" && echo "ALIVE after 20s" || echo "NOT RUNNING after 20s (crashed or exited)"
-          adb exec-out screencap -p > screen.png
-          adb shell dumpsys window windows | grep -i "mCurrentFocus\|mFocusedApp" > focus.txt
-          cat focus.txt
+          adb shell am start -W -n "$pkg/$activity"
+          for t in 30 60 90; do
+            sleep 30
+            adb exec-out screencap -p > "shots/portrait-${t}s.png"
+            adb shell dumpsys window | grep -E "mCurrentFocus|mFocusedApp" >> focus.txt
+          done
+          adb shell "pidof $pkg" && echo "ALIVE after 90s" || echo "NOT RUNNING after 90s"
+          # Landscape: QtPass's desktop layout may fit a phone better sideways.
+          adb shell settings put system accelerometer_rotation 0
+          adb shell settings put system user_rotation 1
+          sleep 15
+          adb exec-out screencap -p > shots/landscape.png
           adb logcat -d > logcat.txt
-          echo "---- full logcat tag summary ----"
-          cut -d' ' -f6 logcat.txt | sed 's/:$//' | sort | uniq -c | sort -rn | head -40
-          echo "---- app package, Qt, qtpass category, warnings and errors ----"
-          grep -iE "$pkg|fatal|androidruntime|qtpass| Qt |qt_|libqtpass|gpg|git| W | E " logcat.txt | tail -300
+          pid=$(grep -m1 "Start proc .*:$pkg/" logcat.txt | sed 's/.*Start proc \([0-9]*\):.*/\1/')
+          echo "---- app process $pid ----"
+          grep " $pid " logcat.txt | grep -vE "ziparchive|nativeloader" | tail -200
+          echo "---- crashes / ANRs ----"
+          grep -E "FATAL|AndroidRuntime|ANR in|not responding" logcat.txt | tail -40
           SCRIPT
           chmod +x probe.sh
       - name: Boot a KVM-accelerated emulator and launch the APK
@@ -153,7 +175,12 @@ jobs:
         with:
           api-level: 34
           arch: x86_64
-          target: google_apis
+          # The plain image: no Google Play services starting up beside us.
+          target: default
+          profile: pixel_6
+          ram-size: 4096M
+          cores: 4
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -no-snapshot
           disable-animations: true
           # The action runs each line of `script:` as its own separate
           # shell invocation, so variables set in one line don't exist in
@@ -165,6 +192,6 @@ jobs:
           name: qtpass-android-probe-logcat
           path: |
             logcat.txt
-            screen.png
+            shots/
             focus.txt
           if-no-files-found: warn
